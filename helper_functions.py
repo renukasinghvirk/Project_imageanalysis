@@ -9,6 +9,43 @@ from datetime import datetime
 from skimage.morphology import *
 from skimage.color import rgb2hsv
 
+
+
+def plot_2_imgs(img_chf, img_eur, chf_title, eur_title, color_map):
+    """
+    Create 1 figure with 2 images.
+
+    Args
+    ----
+    img 1: np.ndarray (M, N, C)
+        Input image of shape MxN and C channels.
+    title 1: float
+        Title of the 1st image
+    img 2: np.ndarray (M, N, C)
+        Input image of shape MxN and C channels.
+    title 2: float
+        Title of the 1st image
+
+    Return
+    ------
+    """
+    # Create a figure with subplots
+    fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+
+    # Display the images
+    ax[0].imshow(img_chf, cmap = color_map)
+    ax[0].set_title(chf_title)  # Set title for the first image
+    ax[1].imshow(img_eur, cmap =  color_map)
+    ax[1].set_title(eur_title)  # Set title for the second image
+
+    # Remove the axis ticks
+    ax[0].axis('off')
+    ax[1].axis('off')
+
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
+
 def extract_rgb_channels(img):
     """
     Extract RGB channels from the input image.
