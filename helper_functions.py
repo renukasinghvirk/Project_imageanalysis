@@ -8,43 +8,7 @@ import os
 from datetime import datetime
 from skimage.morphology import *
 from skimage.color import rgb2hsv
-
-
-
-def plot_2_imgs(img_chf, img_eur, chf_title, eur_title, color_map):
-    """
-    Create 1 figure with 2 images.
-
-    Args
-    ----
-    img 1: np.ndarray (M, N, C)
-        Input image of shape MxN and C channels.
-    title 1: float
-        Title of the 1st image
-    img 2: np.ndarray (M, N, C)
-        Input image of shape MxN and C channels.
-    title 2: float
-        Title of the 1st image
-
-    Return
-    ------
-    """
-    # Create a figure with subplots
-    fig, ax = plt.subplots(1, 2, figsize=(10, 5))
-
-    # Display the images
-    ax[0].imshow(img_chf, cmap = color_map)
-    ax[0].set_title(chf_title)  # Set title for the first image
-    ax[1].imshow(img_eur, cmap =  color_map)
-    ax[1].set_title(eur_title)  # Set title for the second image
-
-    # Remove the axis ticks
-    ax[0].axis('off')
-    ax[1].axis('off')
-
-    # Show the plot
-    plt.tight_layout()
-    plt.show()
+import cv2
 
 def extract_rgb_channels(img):
     """
@@ -124,14 +88,17 @@ def plot_colors_histo(
     ax1.set_xlabel(labels[0])
     ax1.set_ylabel(labels[1])
     ax1.set_title("{} vs {}".format(labels[0], labels[1]))
+    ax1.grid()
     ax2.scatter(channels[0][mask].flatten(), channels[2][mask].flatten(), c=img[mask]/255, s=1, alpha=0.1)
     ax2.set_xlabel(labels[0])
     ax2.set_ylabel(labels[2])
     ax2.set_title("{} vs {}".format(labels[0], labels[2]))
+    ax2.grid()
     ax3.scatter(channels[1][mask].flatten(), channels[2][mask].flatten(), c=img[mask]/255, s=1, alpha=0.1)
     ax3.set_xlabel(labels[1])
     ax3.set_ylabel(labels[2])
     ax3.set_title("{} vs {}".format(labels[1], labels[2]))
+    ax3.grid()
         
     plt.tight_layout()
 
@@ -265,7 +232,6 @@ def apply_hsv_threshold(img, hsv):
     s_T = hsv[1]
     v_T = hsv[2]
     
-    # Threshold data
     h_th = data_h < h_T
     s_th = data_s > s_T
     v_th = data_v < v_T
@@ -275,6 +241,207 @@ def apply_hsv_threshold(img, hsv):
     # ------------------
     
     return  img_th
+
+def project_apply_hsv_threshold(img, hs_limits):
+    """
+    Apply threshold to the input image in HSV color space.
+
+    Args:
+        img (np.ndarray): Input image of shape (M, N, 3) with RGB color space.
+        hsv_limits (tuple): Tuple of tuples defining the min and max HSV thresholds:
+                            ((h_min, h_max), (s_min, s_max), (v_min, v_max))
+
+    Returns:
+        np.ndarray: Thresholded binary image to 0 or 255.
+    """
+    # Extract HSV channels
+    h, s, _ = extract_hsv_channels(img)
+    
+    # Apply thresholds for each channel
+    h_min, h_max = hs_limits[0]
+    s_min, s_max = hs_limits[1]
+    # v_min, v_max = hs_limits[2]
+
+    h_th = (h > h_min) & (h < h_max)
+    s_th = (s > s_min) & (s < s_max)
+    # v_th = (v > v_min) & (v < v_max)
+
+    # Reconstruct image by combining the thresholded channels
+    img_th = np.logical_and(h_th, s_th)
+
+    img_th_uint8 = np.uint8(img_th * 255)  # Convert boolean to 0 or 255
+
+    return img_th_uint8
+
+
+def project_resize_and_blur_image(img_path, scale_percent, blur_kernel_size):
+    """
+    Load an image, resize it, and apply Gaussian blur.
+
+    Args:
+        img_path (str): Path to the image file.
+        scale_percent (int): Percentage by which to scale the image (e.g., 50 for 50%).
+        blur_kernel_size (tuple): Size of the kernel used for blurring (e.g., (3,3)).
+
+    Returns:
+        np.ndarray: The resized and blurred image.
+    """
+    # Load image
+    img = np.array(Image.open(img_path))
+    
+    # Calculate new dimensions
+    new_width = int(img.shape[1] * scale_percent / 100)
+    new_height = int(img.shape[0] * scale_percent / 100)
+    
+    # Resize image
+    img_resized = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_AREA)
+    
+    # Blur image
+    img_blurred = cv2.blur(img_resized, blur_kernel_size)
+    
+    return img_blurred
+
+# # Example usage of the function
+# path = './ref/ref_chf.JPG'  # Replace with your actual image path
+# scale_percent = 50  # Reduce to 50% of the original size
+# blur_kernel_size = (3, 3)  # Blur with a 3x3 kernel
+
+# # Apply the function
+# processed_image = resize_and_blur_image(path, scale_percent, blur_kernel_size)
+
+# # Show the processed image
+# plt.imshow(processed_image)
+# plt.axis('off')
+# plt.show()
+
+def project_detect_and_annotate_circles(original_img, processed_img, scale_percent, param1=30, show = False):
+    """
+    Detects circles in a processed image, scales the detections back to the original image size,
+    annotates them, and displays the annotated image.
+
+    Args:
+        original_img (np.ndarray): The original image.
+        processed_img (np.ndarray): Pre-processed image for circle detection (e.g., thresholded).
+        scale_percent (int): The percentage scale used when resizing the original image.
+        param1 (int): Parameter for the internal Canny edge detector in HoughCircles.
+
+    Displays:
+        The resized original image with annotated detections.
+
+    Returns:
+        Detected circles
+    """
+    original_height, original_width = original_img.shape[:2]
+    new_width = int(original_width * scale_percent / 100)
+    new_height = int(original_height * scale_percent / 100)
+
+    # Calculate scale factors
+    scale_x = original_width / new_width
+    scale_y = original_height / new_height
+
+    # Detect circles in the processed image
+    detected_circles = cv2.HoughCircles(processed_img, cv2.HOUGH_GRADIENT, dp=1, minDist=30,
+                                        param1=param1, param2=int(param1/2), minRadius=17, maxRadius=45)
+
+    if detected_circles is not None:
+        detected_circles = np.uint16(np.around(detected_circles))
+
+        print(f"Number of circles detected: {len(detected_circles[0])}")
+        for i, (x_resized, y_resized, r_resized) in enumerate(detected_circles[0, :]):
+            x_original = int(x_resized * scale_x)
+            y_original = int(y_resized * scale_y)
+            r_original = int(r_resized * scale_x)  # assuming uniform scaling
+            print(f"Circle {i+1}: Center at ({x_original}, {y_original}), Radius: {r_original}")
+
+        # Visualize results on the resized image
+        img_annotated = original_img.copy()
+        img_annotated = cv2.resize(img_annotated, (new_width, new_height))
+        for i, (x, y, r) in enumerate(detected_circles[0, :]):
+            cv2.circle(img_annotated, (x, y), r, (0, 255, 0), 2)
+            cv2.circle(img_annotated, (x, y), 1, (0, 0, 255), 3)
+            label = f"C{i+1}-r:{int(r*scale_x)}"
+            cv2.putText(img_annotated, label, (x - 50, y - r - 10), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, (255, 0, 0), 1, cv2.LINE_AA)
+
+        if show:
+            plt.imshow(cv2.cvtColor(img_annotated, cv2.COLOR_BGR2RGB))
+            plt.axis('on')
+            plt.grid(False)
+            plt.show()
+        
+        return detected_circles
+    else:
+        print("No circles detected.")
+        return 0
+
+# # Example usage
+# img_chf = cv2.imread('./ref/ref_chf.JPG')
+# img_chf_gray = cv2.cvtColor(img_chf, cv2.COLOR_BGR2GRAY)
+# img_chf_gray = cv2.medianBlur(img_chf_gray, 5)
+# detect_and_annotate_circles(img_chf, img_chf_gray, 10)
+
+def project_extract_circles_with_transparency(img_path, detected_circles, scale_factor, desired_radius = 400):
+    """
+    Extracts circles from the provided image, applies a mask to keep only the circular part visible,
+    and the rest transparent.
+
+    Args:
+        img_path (str): Path to the original image.
+        detected_circles (list): List of circles with coordinates and radius [(x_resized, y_resized, r_resized)].
+        scale_factor (int): Value containing the scaling factor used for the detected circles.
+        desired_radius (int): The radius of the circles to be cut out.
+
+    Returns:
+        list of np.ndarray: List of images with the extracted circles, each with transparent background.
+    """
+    img_original = cv2.imread(img_path, cv2.IMREAD_COLOR)
+    img_original = cv2.cvtColor(img_original, cv2.COLOR_BGR2RGB)  # Convert to RGB
+
+    scale_x = scale_factor
+    scale_y = scale_factor
+    circle_images = []
+
+    for i, (x_resized, y_resized, r_resized) in enumerate(detected_circles[0,:]):
+        x_original = int(x_resized * scale_x)
+        y_original = int(y_resized * scale_y)
+
+        # Define the mask size
+        mask_size = desired_radius * 2
+        mask = np.zeros((mask_size, mask_size, 3), dtype=np.uint8)
+
+        # Extract the region of interest with padding if necessary
+        top_left_x = x_original - desired_radius
+        top_left_y = y_original - desired_radius
+        bottom_right_x = x_original + desired_radius
+        bottom_right_y = y_original + desired_radius
+
+        extracted_circle = img_original[max(top_left_y, 0):min(bottom_right_y, img_original.shape[0]),
+                                        max(top_left_x, 0):min(bottom_right_x, img_original.shape[1])]
+        
+        # Create the circle mask for the alpha channel
+        cv2.circle(mask, (desired_radius, desired_radius), desired_radius, (255, 255, 255), -1)
+
+        # Place the extracted circle in the mask
+        # mask[:extracted_circle.shape[0], :extracted_circle.shape[1], :3] = extracted_circle
+        mask = cv2.bitwise_and(extracted_circle, mask)
+
+        circle_images.append(mask)
+
+        # Optionally show each circle with transparency
+        plt.figure(figsize=(4, 4))
+        plt.imshow(mask)
+        plt.title(f"Circle {i+1}")
+        plt.axis('off')
+        plt.show()
+
+    return circle_images
+
+# # Example usage
+# detected_circles = [(50, 50, 30), (100, 100, 30), (150, 150, 30)]  # Example detected circles
+# scale_factors = (1.0, 1.0)  # Example scale factors if no scaling was done
+# extract_circles_with_transparency('path_to_image.jpg', detected_circles, scale_factors, 40)
+
+
 #___________________________________________________________________________________
 #___________________________________________________________________________________
 
