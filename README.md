@@ -11,5 +11,5 @@ The required libraries that must be installed are listed in the `requirements.tx
 © 2024 GitHub, Inc.
 
 
-EPFL © [Camille Pittet](https://github.com/camicc), , [Shujiro Shobayashi](https://github.com/shobashu1909
+EPFL © [Camille Pittet](https://github.com/camicc), [Shujiro Shobayashi](https://github.com/shobashu1909
 ), [Renuka Singh Virk](https://github.com/renukasinghvirk)
